@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pratyahara Generator</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: system-ui, "Noto Sans Devanagari", sans-serif;
+         background: #f4f4f6; color: #222; }
+  header { padding: 16px 24px; background: #2b2d42; color: #fff; font-size: 20px; }
+  main { display: grid; grid-template-columns: 320px 1fr; gap: 20px;
+         padding: 20px; height: calc(100vh - 60px); }
+  .panel { background: #fff; border-radius: 10px; padding: 16px;
+           box-shadow: 0 1px 4px rgba(0,0,0,.1); }
+  .input-panel { display: flex; flex-direction: column; gap: 10px; align-self: start; }
+  textarea { width: 100%; height: 120px; font-size: 18px; padding: 8px; resize: vertical; }
+  button { padding: 10px; font-size: 16px; border: 0; border-radius: 6px;
+           background: #2b2d42; color: #fff; cursor: pointer; }
+  button.secondary { background: #8d99ae; }
+  .hint { font-size: 13px; color: #666; }
+  .output-panel { overflow-y: auto; }
+  .item { border-bottom: 1px solid #eee; padding: 10px 0; }
+  .item:last-child { border-bottom: 0; }
+  .name { font-weight: 600; font-size: 20px; }
+  .sounds { font-size: 20px; margin-top: 4px; line-height: 1.6; }
+  .count { color: #888; font-size: 13px; margin-left: 8px; }
+  .error .name { color: #b00020; }
+  .error .sounds { color: #b00020; font-size: 15px; }
+  @media (max-width: 800px) {
+    main { grid-template-columns: 1fr; height: auto; }
+    .output-panel { min-height: 300px; }
+  }
+</style>
+</head>
+<body>
+<header>Paninian Pratyahara Generator</header>
+<main>
+  <section class="panel input-panel">
+    <label for="inp"><b>Input</b></label>
+    <textarea id="inp" placeholder="अण् इक् हल्"></textarea>
+    <div class="hint">Separate several with spaces or commas.<br>
+      Use <b>all</b> for every pratyahara, or <b>अण्:6</b> for a specific sense.</div>
+    <button id="go">Generate</button>
+    <button id="all" class="secondary">Show all</button>
+  </section>
+
+  <section class="panel output-panel" id="out"></section>
+</main>
+
+<script>
+const inp = document.getElementById("inp");
+const out = document.getElementById("out");
+
+async function run(text) {
+  const res = await fetch("/api/pratyahara", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({text})
+  });
+  const data = await res.json();
+  out.innerHTML = "";
+
+  data.forEach(r => {
+    const item = document.createElement("div");
+    item.className = "item" + (r.ok ? "" : " error");
+
+    const name = document.createElement("span");
+    name.className = "name";
+    name.textContent = r.input;
+    item.appendChild(name);
+
+    if (r.ok) {
+      const count = document.createElement("span");
+      count.className = "count";
+      count.textContent = r.sounds.length + " sounds";
+      item.appendChild(count);
+    }
+
+    const sounds = document.createElement("div");
+    sounds.className = "sounds";
+    sounds.textContent = r.ok ? r.sounds.join("  ") : r.error;
+    item.appendChild(sounds);
+
+    out.appendChild(item);
+  });
+}
+
+document.getElementById("go").onclick  = () => run(inp.value);
+document.getElementById("all").onclick = () => { inp.value = "all"; run("all"); };
+inp.addEventListener("keydown", e => {
+  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); run(inp.value); }
+});
+</script>
+</body>
+</html>
