@@ -51,6 +51,12 @@ ASHTADHYAYI_INVENTORY = [
     "रल्", "वल्", "वश्", "शर्", "शल्", "हल्", "हश्",
 ]
 
+# Optional manual exclusions (kept empty on purpose).  The 14 "ultimate"
+# combinations (last sound of each sutra + its own marker) are already
+# removed by the rule itself, so nothing needs to be listed here.
+# Format if you ever need it: "हल्"  (all senses)  or  "अण्:1"  (one sense).
+EXCLUDED_NOTATIONS = []
+
 RULE_BASED = "RULE_BASED"   # sentinel
 
 INVENTORIES = {
@@ -104,6 +110,8 @@ class PratyaharaEngine:
             raise ValueError(f"Unknown convention '{convention}'. "
                              f"Choose from {list(INVENTORIES)}.")
         self.convention = convention
+        self._excluded = set()
+        self._excluded_senses = set()
         entries = INVENTORIES[convention]
 
         if entries is None:
@@ -111,6 +119,7 @@ class PratyaharaEngine:
             return
         if entries is RULE_BASED:
             self._inventory = self._build_rule_based_inventory()
+            self._apply_exclusions()
             return
 
         inv = {}
@@ -124,6 +133,30 @@ class PratyaharaEngine:
         for senses in inv.values():
             senses.sort()
         self._inventory = inv
+        self._apply_exclusions()
+
+    def _apply_exclusions(self):
+        """Remove every EXCLUDED_NOTATIONS entry from the inventory.
+        'उण्'   -> blocks the notation in every sense
+        'अण्:1' -> blocks only the sense ending in sutra 1"""
+        self._excluded = set()
+        self._excluded_senses = set()
+        for text in EXCLUDED_NOTATIONS:
+            base, sense = self._split_sense(text)
+            try:
+                pair = self._parse_pair(base)
+            except ValueError:
+                continue
+            if sense is None:
+                self._excluded.add(pair)
+                self._inventory.pop(pair, None)
+            else:
+                self._excluded_senses.add((pair[0], pair[1], sense))
+                lst = self._inventory.get(pair)
+                if lst and sense in lst:
+                    lst.remove(sense)
+                    if not lst:
+                        del self._inventory[pair]
 
     # ---------------- parsing helpers ----------------
 
@@ -228,7 +261,14 @@ class PratyaharaEngine:
             actual = end_sutra or self._mechanical_end_sutra(start, marker)
             if actual not in attested:
                 name = display_start(start) + marker
-                if self.convention == "rule_based":
+                if (start, marker, actual) in self._excluded_senses:
+                    reason = (f"the sense ending at the marker in sutra {actual} "
+                              f"is on the exception list.")
+                elif (start, marker) in self._excluded:
+                    reason = ("this is on the exception list: a pratyahara cannot "
+                              "be formed from the sound immediately before a "
+                              "marker with that marker.")
+                elif self.convention == "rule_based":
                     reason = ("fewer than two sounds lie between the start and "
                               "the marker (the sound immediately before a marker "
                               "cannot form a pratyahara with it), or the marker "
@@ -287,14 +327,36 @@ class PratyaharaEngine:
         return rows
 
     def count_all(self):
-        """Total number of pratyaharas under the current convention."""
+        """Total number of pratyaharas under the current convention.
+        Both senses of an ambiguous marker (e.g. अण्:1 and अण्:6) count separately."""
         return len(self.generate_all())
+
+    def ultimate_pairs(self):
+        """The 14 'ultimate' combinations: the last sound of each sutra paired
+        with that sutra's own marker.  They cover a single sound, so they are
+        never pratyaharas."""
+        out = []
+        for i, item in enumerate(self.sequence):
+            if item["is_anubandha"] and i > 0 and not self.sequence[i - 1]["is_anubandha"]:
+                prev = self.sequence[i - 1]
+                out.append({"notation": display_start(prev["symbol"]) + item["symbol"],
+                            "sutra": item["sutra"]})
+        return out
+
+    def count_summary(self):
+        rows = self.generate_all()
+        names = {display_start(r["start"]) + r["ending_marker"] for r in rows}
+        mech = len(self.generate_mechanical())
+        return {"total": len(rows), "distinct_names": len(names),
+                "all_start_marker_pairs": mech,
+                "ultimate_excluded": len(self.ultimate_pairs()),
+                "convention": self.convention}
 
     def print_all(self):
         rows = self.generate_all()
         for r in rows:
             print(f"{r['notation']} → {r['sounds']}")
-        print(f"\nTotal entries: {len(rows)} (convention: '{self.convention}')")
+        print(f"\nTotal pratyaharas: {len(rows)} (convention: '{self.convention}')")
 
     def filter_with_array(self, notation, allowed_sounds):
         return [s for s in self.get_pratyahara(notation) if s in allowed_sounds]
@@ -305,15 +367,21 @@ def demo(engine):
     print("=" * 70)
     print("PRATYAHARA GENERATOR  (convention:", engine.convention + ")")
     print("=" * 70)
-    for label, args in [("अण्:1", ("अण्:1",)), ("अण्:6", ("अण्:6",)),
+    for label, args in [("अण्", ("अण्",)), ("इक्", ("इक्",)),
                         ("ऋष् (crosses sutras 2-9)", ("ऋष्",)),
-                        ("हल्", ("हल्",)), ("यञ्", ("यञ्",)),
-                        ("ए + ङ्... ", ("ए", "च्"))]:
+                        ("यञ्", ("यञ्",)),
+                        ("ए + च् (separate args)", ("ए", "च्"))]:
         print(f"\n{label}\n{engine.get_pratyahara(*args)}")
-    print(f"\nTotal pratyaharas ({engine.convention}): {engine.count_all()}")
+    c = engine.count_summary()
+    print(f"\nTotal pratyaharas: {c['total']} "
+          f"({c['distinct_names']} distinct names, convention: '{c['convention']}')")
+    print(f"All start/marker pairs : {c['all_start_marker_pairs']}")
+    print(f"Ultimate pairs removed : {c['ultimate_excluded']}  ->  "
+          + "  ".join(u["notation"] for u in engine.ultimate_pairs()))
+    print(f"Valid pratyaharas      : {c['total']}")
     print("\n--- Rejected ---")
-    for bad in ["उण्:1", "ऌक्", "ओङ्", "औच्", "रट्", "लण्", "नम्", "भञ्",
-                "धष्", "दश्", "तव्", "पय्", "सर्"]:
+    for bad in ["ऌक्", "ओङ्", "औच्", "रट्", "लण्", "नम्", "भञ्",
+                "धष्", "दश्", "तव्", "पय्", "सर्", "उण्:1"]:
         try:
             engine.get_pratyahara(bad)
             print(f"  {bad}: ACCEPTED (unexpected)")
@@ -332,8 +400,10 @@ def interactive(engine):
             engine.print_all()
             continue
         if text.lower() == "count":
-            print(f"\nTotal pratyaharas: {engine.count_all()} "
-                  f"(convention: '{engine.convention}')")
+            c = engine.count_summary()
+            print(f"\nTotal pratyaharas: {c['total']} "
+                  f"({c['distinct_names']} distinct names, "
+                  f"convention: '{c['convention']}')")
             continue
         if not text:
             continue
