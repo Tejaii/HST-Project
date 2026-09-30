@@ -3,7 +3,10 @@ from flask import Flask, jsonify, request, render_template
 from pratyahara_engine import PratyaharaEngine, InvalidPratyaharaError, SEQUENCE
 
 app = Flask(__name__)
-engine = PratyaharaEngine(SEQUENCE, convention="ashtadhyayi")
+
+# "rule_based" = every grammatically valid pratyahara (291).
+# "ashtadhyayi" = only the 43 names in the hand-typed list.
+engine = PratyaharaEngine(SEQUENCE, convention="rule_based")
 
 
 @app.route("/")
@@ -26,10 +29,7 @@ def pratyahara():
             results.append({"input": token,
                             "sounds": engine.get_pratyahara(token),
                             "ok": True})
-        except InvalidPratyaharaError:
-            results.append({"input": token, "ok": False,
-                            "error": "Not a recognized Paninian pratyahara"})
-        except ValueError as e:
+        except ValueError as e:      # includes InvalidPratyaharaError
             results.append({"input": token, "ok": False, "error": str(e)})
 
     return jsonify(results)

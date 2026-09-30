@@ -20,6 +20,9 @@
   button.secondary { background: #8d99ae; }
   .hint { font-size: 13px; color: #666; }
   .output-panel { overflow-y: auto; }
+  .summary { position: sticky; top: -16px; background: #eef0f7; border-radius: 6px;
+             padding: 10px 12px; margin: -4px 0 8px; font-size: 16px; font-weight: 600; }
+  .summary .bad { color: #b00020; font-weight: 500; }
   .item { border-bottom: 1px solid #eee; padding: 10px 0; }
   .item:last-child { border-bottom: 0; }
   .name { font-weight: 600; font-size: 20px; }
@@ -60,6 +63,20 @@ async function run(text) {
   });
   const data = await res.json();
   out.innerHTML = "";
+
+  // ---- total count summary ----
+  const valid = data.filter(r => r.ok).length;
+  const invalid = data.length - valid;
+  const summary = document.createElement("div");
+  summary.className = "summary";
+  summary.textContent = "Total pratyaharas: " + valid;
+  if (invalid > 0) {
+    const bad = document.createElement("span");
+    bad.className = "bad";
+    bad.textContent = "  (" + invalid + " invalid)";
+    summary.appendChild(bad);
+  }
+  out.appendChild(summary);
 
   data.forEach(r => {
     const item = document.createElement("div");

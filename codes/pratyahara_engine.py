@@ -1,27 +1,19 @@
 # ============================================================
-# PANINIAN PRATYAHARA ENGINE  (validated version)
-# Based on the 14 Shiva Sutras + Panini's attested inventory
+# PANINIAN PRATYAHARA ENGINE  (rule-based: works for ALL valid cases)
 # ============================================================
-#
-# Two separate questions are kept apart:
-#
-#   1. RANGE      - what does start + marker cover?
-#                   (Panini 1.1.71 adir antyena sahetA; computable)
-#   2. VALIDITY   - is that notation a pratyahara Panini actually
-#                   uses?  (NOT computable from the sutra order;
-#                   determined by usage in the Ashtadhyayi, so it
-#                   comes from an inventory.)
+# 1. RANGE     - start + marker -> sounds (Panini 1.1.71 adir antyena saheta)
+# 2. VALIDITY  - three conventions:
+#      "rule_based"  (DEFAULT) every sound -> any LATER marker is accepted,
+#                    EXCEPT the degenerate case where fewer than two
+#                    sounds lie in the range (i.e. the sound immediately
+#                    before the marker paired with that marker).
+#                    Cross-sutra ranges of any length are allowed.
+#      "ashtadhyayi" only the attested inventory below (restrictive)
+#      "custom"      your own list
+#      "mechanical"  no validation at all (diagnostics)
 # ============================================================
 
 VIRAMA = "\u094d"
-
-# ------------------------------------------------------------
-# 1. SHIVA SUTRAS   (sound, is_anubandha)
-# ------------------------------------------------------------
-# CORRECTION: sutra 11 is  kha pha chha tha tha ca Ta ta v(marker).
-# The earlier version ended it at "च्", dropping च ट त व्.
-# Everything else is unchanged.
-# ------------------------------------------------------------
 
 SHIVA_SUTRAS = [
     [("अ", False), ("इ", False), ("उ", False), ("ण्", True)],
@@ -38,7 +30,7 @@ SHIVA_SUTRAS = [
      ("द्", False), ("श्", True)],
     [("ख्", False), ("फ्", False), ("छ्", False), ("ठ्", False),
      ("थ्", False), ("च्", False), ("ट्", False), ("त्", False),
-     ("व्", True)],                                   # corrected sutra 11
+     ("व्", True)],
     [("क्", False), ("प्", False), ("य्", True)],
     [("श्", False), ("ष्", False), ("स्", False), ("र्", True)],
     [("ह्", False), ("ल्", True)],
@@ -47,76 +39,65 @@ SHIVA_SUTRAS = [
 SEQUENCE = []
 for sutra_number, sutra in enumerate(SHIVA_SUTRAS, start=1):
     for position, (symbol, is_anubandha) in enumerate(sutra):
-        SEQUENCE.append({
-            "symbol": symbol,
-            "is_anubandha": is_anubandha,
-            "sutra": sutra_number,
-            "position": position,
-        })
+        SEQUENCE.append({"symbol": symbol, "is_anubandha": is_anubandha,
+                         "sutra": sutra_number, "position": position})
 
-
-# ------------------------------------------------------------
-# 2. INVENTORIES OF VALID PRATYAHARAS  (configurable)
-# ------------------------------------------------------------
-# Format: "notation" or "notation:N" where N is the number of the
-# Shiva Sutra holding the ending marker.  N is needed only where
-# the marker letter occurs more than once (currently only ण्).
-#
-# NOTE: compiled from the standard lists of pratyaharas used in
-# the Ashtadhyayi.  Scholarly sources differ slightly in how they
-# count/list them.  VERIFY against the Kashika or your preferred
-# edition and edit here; nothing else in the code needs to change.
-# ------------------------------------------------------------
-
+# Optional restrictive list (only used by convention="ashtadhyayi").
 ASHTADHYAYI_INVENTORY = [
     "अक्", "अच्", "अट्", "अण्:1", "अण्:6", "अम्", "अल्", "अश्",
-    "इक्", "इच्", "इण्:6",
-    "उक्",
-    "एङ्", "एच्", "ऐच्",
-    "ङम्", "ञम्",
-    "खय्", "खर्", "चय्", "चर्", "छव्",
-    "जश्", "झय्", "झर्", "झल्", "झश्", "झष्",
-    "बश्", "भष्", "मय्",
-    "यञ्", "यण्", "यम्", "यय्", "यर्",
-    "रल्", "वल्", "वश्",
-    "शर्", "शल्",
-    "हल्", "हश्",
+    "इक्", "इच्", "इण्:6", "उक्", "एङ्", "एच्", "ऐच्", "ङम्", "ञम्",
+    "खय्", "खर्", "चय्", "चर्", "छव्", "जश्", "झय्", "झर्", "झल्",
+    "झश्", "झष्", "बश्", "भष्", "मय्", "यञ्", "यण्", "यम्", "यय्", "यर्",
+    "रल्", "वल्", "वश्", "शर्", "शल्", "हल्", "हश्",
 ]
 
+RULE_BASED = "RULE_BASED"   # sentinel
+
 INVENTORIES = {
+    "rule_based": RULE_BASED,
     "ashtadhyayi": ASHTADHYAYI_INVENTORY,
-    "custom": [],          # put your own list here
-    "mechanical": None,    # NO validation: every start/marker pair passes
+    "custom": [],
+    "mechanical": None,
 }
 
 
 class InvalidPratyaharaError(ValueError):
-    """Range is computable, but the notation is not an attested pratyahara."""
+    """Range is computable, but the notation is not a valid pratyahara."""
 
 
 def display_start(sound):
-    """Traditional notation drops the virama on the first letter (हल्, यण्)."""
     return sound[:-1] if sound.endswith(VIRAMA) else sound
 
 
-# ------------------------------------------------------------
-# 3. ENGINE
-# ------------------------------------------------------------
-
 class PratyaharaEngine:
 
-    def __init__(self, sequence, convention="ashtadhyayi"):
+    def __init__(self, sequence, convention="rule_based"):
         self.sequence = sequence
-
         self.sounds = []
         for item in sequence:
             if not item["is_anubandha"] and item["symbol"] not in self.sounds:
                 self.sounds.append(item["symbol"])
-
         self.anubandhas = {i["symbol"] for i in sequence if i["is_anubandha"]}
         self.set_convention(convention)
 
     # ---------------- configuration ----------------
+
+    def _build_rule_based_inventory(self):
+        """Every (start, marker) with >= 2 sounds in the range.
+        A repeated sound (ह) is only used from its FIRST occurrence."""
+        inv, seen = {}, set()
+        for si, s in enumerate(self.sequence):
+            if s["is_anubandha"] or s["symbol"] in seen:
+                continue
+            seen.add(s["symbol"])
+            count = 0
+            for ei in range(si, len(self.sequence)):
+                e = self.sequence[ei]
+                if not e["is_anubandha"]:
+                    count += 1
+                elif count >= 2:
+                    inv.setdefault((s["symbol"], e["symbol"]), []).append(e["sutra"])
+        return inv
 
     def set_convention(self, convention):
         if convention not in INVENTORIES:
@@ -126,10 +107,12 @@ class PratyaharaEngine:
         entries = INVENTORIES[convention]
 
         if entries is None:
-            self._inventory = None       # mechanical mode
+            self._inventory = None
+            return
+        if entries is RULE_BASED:
+            self._inventory = self._build_rule_based_inventory()
             return
 
-        # (start, marker) -> sorted list of end-sutra numbers
         inv = {}
         for entry in entries:
             base, explicit = self._split_sense(entry)
@@ -164,18 +147,15 @@ class PratyaharaEngine:
             return text
         if text + VIRAMA in self.sounds:
             return text + VIRAMA
-        raise ValueError(f"Starting sound '{text}' is not present "
-                         f"in the Shiva Sutras.")
+        raise ValueError(f"Starting sound '{text}' is not present in the Shiva Sutras.")
 
     def _parse_pair(self, base):
-        """Split e.g. 'हल्' or 'ह्ल्' or 'ऋष्' into (start, marker)."""
         forms = []
         for s in self.sounds:
             forms.append((s, s))
             if s.endswith(VIRAMA):
-                forms.append((s[:-1], s))       # traditional spelling
+                forms.append((s[:-1], s))
         forms.sort(key=lambda f: len(f[0]), reverse=True)
-
         for form, sound in forms:
             if base.startswith(form):
                 try:
@@ -183,18 +163,16 @@ class PratyaharaEngine:
                 except ValueError:
                     continue
                 return sound, marker
-
         raise ValueError(f"Could not parse '{base}'. "
                          f"Expected something like 'अण्', 'इक्', 'ऋष्', 'हल्'.")
 
-    # ---------------- mechanical range (1.1.71) ----------------
+    # ---------------- range (1.1.71) ----------------
 
     def find_start(self, start):
         for i, item in enumerate(self.sequence):
             if item["symbol"] == start and not item["is_anubandha"]:
                 return i
-        raise ValueError(f"Starting sound '{start}' is not present "
-                         f"in the Shiva Sutras.")
+        raise ValueError(f"Starting sound '{start}' is not present in the Shiva Sutras.")
 
     def find_end(self, start_index, marker, end_sutra=None):
         for i in range(start_index + 1, len(self.sequence)):
@@ -207,33 +185,31 @@ class PratyaharaEngine:
                          f"starting sound{where}.")
 
     def _mechanical_end_sutra(self, start, marker):
-        s = self.find_start(start)
-        return self.sequence[self.find_end(s, marker)]["sutra"]
+        return self.sequence[self.find_end(self.find_start(start), marker)]["sutra"]
 
-    def compute_range(self, start, marker, end_sutra=None):
-        """Pure computation. Says NOTHING about grammatical validity."""
+    def compute_range(self, start, marker, end_sutra=None, unique=True):
+        """Pure computation. unique=True lists a repeated sound (ह) once;
+        unique=False returns every occurrence in Shiva-Sutra order."""
         s = self.find_start(start)
         e = self.find_end(s, marker, end_sutra)
         result = []
         for item in self.sequence[s:e]:
-            if not item["is_anubandha"] and item["symbol"] not in result:
-                result.append(item["symbol"])
+            if item["is_anubandha"]:
+                continue
+            if unique and item["symbol"] in result:
+                continue
+            result.append(item["symbol"])
         return result
 
     # ---------------- validated lookup ----------------
 
     def senses(self, start, marker):
-        """Attested end-sutra numbers for this notation (empty if none)."""
         if self._inventory is None:
             return []
         return list(self._inventory.get((start, marker), []))
 
     def get_pratyahara(self, notation, ending_marker=None,
-                       end_sutra=None, strict=True):
-        """
-        get_pratyahara("अण्")            get_pratyahara("ऋ", "ष्")
-        get_pratyahara("अण्:6")          get_pratyahara("उण्", strict=False)
-        """
+                       end_sutra=None, strict=True, unique=True):
         if ending_marker is not None:
             start = self._normalize_sound(notation)
             marker = self._normalize_marker(ending_marker)
@@ -243,24 +219,25 @@ class PratyaharaEngine:
             end_sutra = end_sutra or explicit
 
         attested = self.senses(start, marker)
-
-        # choose which occurrence of the marker to use
         if end_sutra is None and attested:
-            end_sutra = attested[0]          # default = first attested sense
+            end_sutra = attested[0]
 
-        result = self.compute_range(start, marker, end_sutra)   # may raise
+        result = self.compute_range(start, marker, end_sutra, unique)
 
         if strict and self._inventory is not None:
             actual = end_sutra or self._mechanical_end_sutra(start, marker)
             if actual not in attested:
                 name = display_start(start) + marker
+                if self.convention == "rule_based":
+                    reason = ("fewer than two sounds lie between the start and "
+                              "the marker (the sound immediately before a marker "
+                              "cannot form a pratyahara with it), or the marker "
+                              "does not occur after the start.")
+                else:
+                    reason = "not in the inventory for this convention."
                 raise InvalidPratyaharaError(
-                    f"Invalid pratyahara: {name}\n"
-                    f"Reason: The combination is mechanically constructible "
-                    f"from the Shiva Sutras but is not a recognized "
-                    f"Paninian pratyahara "
-                    f"(convention: '{self.convention}')."
-                )
+                    f"Invalid pratyahara: {name}\nReason: {reason} "
+                    f"(convention: '{self.convention}')")
         return result
 
     def is_valid(self, notation, ending_marker=None, end_sutra=None):
@@ -272,11 +249,9 @@ class PratyaharaEngine:
 
     # ---------------- generation ----------------
 
-    def generate_all(self):
-        """ONLY validated pratyaharas, in Shiva-Sutra order."""
+    def generate_all(self, unique=True):
         if self._inventory is None:
             return self.generate_mechanical()
-
         rows = []
         for (start, marker), senses in self._inventory.items():
             for sutra_no in senses:
@@ -284,11 +259,9 @@ class PratyaharaEngine:
                 if len(senses) > 1:
                     label += f":{sutra_no}"
                 rows.append({
-                    "notation": label,
-                    "start": start,
-                    "ending_marker": marker,
+                    "notation": label, "start": start, "ending_marker": marker,
                     "end_sutra": sutra_no,
-                    "sounds": self.compute_range(start, marker, sutra_no),
+                    "sounds": self.compute_range(start, marker, sutra_no, unique),
                     "_order": (self.find_start(start), sutra_no),
                 })
         rows.sort(key=lambda r: r["_order"])
@@ -297,108 +270,82 @@ class PratyaharaEngine:
         return rows
 
     def generate_mechanical(self):
-        """Every start/marker pair. NOT valid pratyaharas - diagnostics only."""
         rows = []
         for si, s_item in enumerate(self.sequence):
             if s_item["is_anubandha"]:
                 continue
             for ei in range(si + 1, len(self.sequence)):
                 e_item = self.sequence[ei]
-                if not e_item["is_anubandha"]:
-                    continue
-                rows.append({
-                    "notation": display_start(s_item["symbol"]) + e_item["symbol"],
-                    "start": s_item["symbol"],
-                    "ending_marker": e_item["symbol"],
-                    "end_sutra": e_item["sutra"],
-                    "sounds": self.compute_range(
-                        s_item["symbol"], e_item["symbol"], e_item["sutra"]),
-                })
+                if e_item["is_anubandha"]:
+                    rows.append({
+                        "notation": display_start(s_item["symbol"]) + e_item["symbol"],
+                        "start": s_item["symbol"], "ending_marker": e_item["symbol"],
+                        "end_sutra": e_item["sutra"],
+                        "sounds": self.compute_range(s_item["symbol"],
+                                                     e_item["symbol"], e_item["sutra"]),
+                    })
         return rows
+
+    def count_all(self):
+        """Total number of pratyaharas under the current convention."""
+        return len(self.generate_all())
 
     def print_all(self):
         rows = self.generate_all()
         for r in rows:
             print(f"{r['notation']} → {r['sounds']}")
-        print(f"\nTotal validated entries: {len(rows)} "
-              f"(convention: '{self.convention}')")
-
-    # ---------------- optional helper ----------------
+        print(f"\nTotal entries: {len(rows)} (convention: '{self.convention}')")
 
     def filter_with_array(self, notation, allowed_sounds):
-        return [s for s in self.get_pratyahara(notation)
-                if s in allowed_sounds]
+        return [s for s in self.get_pratyahara(notation) if s in allowed_sounds]
 
 
 # ------------------------------------------------------------
-# 4. EXAMPLES
-# ------------------------------------------------------------
-
 def demo(engine):
     print("=" * 70)
-    print("PRATYAHARA GENERATOR")
+    print("PRATYAHARA GENERATOR  (convention:", engine.convention + ")")
     print("=" * 70)
-
-    print("\n--- Valid (attested) pratyaharas ---")
-    for label, args in [
-        ("अण्", ("अण्",)),
-        ("अण्:6", ("अण्:6",)),
-        ("इक्", ("इक्",)),
-        ("हल्", ("हल्",)),
-        ("एङ् + separate args (ए + ङ्)", ("ए", "ङ्")),
-    ]:
-        print(f"\n{label}")
-        print(engine.get_pratyahara(*args))
-
-    print("\n--- Range only (strict=False): computable, NOT attested ---")
-    for label, args in [
-        ("ऋष्", ("ऋष्",)),
-        ("ऋ + ष् (separate arguments)", ("ऋ", "ष्")),
-    ]:
-        print(f"\n{label}")
-        print(engine.get_pratyahara(*args, strict=False))
-
-    print("\n--- Rejected in strict mode ---")
-    for bad in ["ऋष्", "उण्", "ऌक्", "ओङ्", "रट्", "सर्"]:
+    for label, args in [("अण्:1", ("अण्:1",)), ("अण्:6", ("अण्:6",)),
+                        ("ऋष् (crosses sutras 2-9)", ("ऋष्",)),
+                        ("हल्", ("हल्",)), ("यञ्", ("यञ्",)),
+                        ("ए + ङ्... ", ("ए", "च्"))]:
+        print(f"\n{label}\n{engine.get_pratyahara(*args)}")
+    print(f"\nTotal pratyaharas ({engine.convention}): {engine.count_all()}")
+    print("\n--- Rejected ---")
+    for bad in ["उण्:1", "ऌक्", "ओङ्", "औच्", "रट्", "लण्", "नम्", "भञ्",
+                "धष्", "दश्", "तव्", "पय्", "सर्"]:
         try:
             engine.get_pratyahara(bad)
+            print(f"  {bad}: ACCEPTED (unexpected)")
         except ValueError as e:
-            print(f"  {bad}: {str(e).splitlines()[-1]}")
+            print(f"  {bad}: rejected")
 
-# ------------------------------------------------------------
-# 5. INTERACTIVE MODE
-# ------------------------------------------------------------
 
 def interactive(engine):
-    print("\n" + "=" * 70)
-    print("INTERACTIVE MODE   (type a pratyahara, 'all', or 'quit')")
-    print("Ambiguous markers: use e.g. अण्:6 for the sutra-6 sense.")
-    print("=" * 70)
-
+    print("\nINTERACTIVE MODE  (type a pratyahara, 'all', 'count', or 'quit')")
+    print("Ambiguous ण् marker: use अण्:1 / अण्:6")
     while True:
         text = input("\nEnter a pratyahara: ").strip()
-
         if text.lower() == "quit":
-            print("Program ended.")
             break
         if text.lower() == "all":
             engine.print_all()
             continue
+        if text.lower() == "count":
+            print(f"\nTotal pratyaharas: {engine.count_all()} "
+                  f"(convention: '{engine.convention}')")
+            continue
         if not text:
             continue
-
         try:
             result = engine.get_pratyahara(text)
-            print(f"\n{text} → {result}")
-            print(f"Number of sounds = {len(result)}")
-
+            print(f"\n{text} → {result}\nNumber of sounds = {len(result)}")
             base, explicit = engine._split_sense(text)
             start, marker = engine._parse_pair(base)
             senses = engine.senses(start, marker)
             if len(senses) > 1 and explicit is None:
-                others = ", ".join(f"{base}:{n}" for n in senses[1:])
-                print(f"(Default sense shown. Other attested sense: {others})")
-
+                print("(Default sense shown. Others: " +
+                      ", ".join(f"{base}:{n}" for n in senses[1:]) + ")")
         except InvalidPratyaharaError as error:
             print(f"\n{error}")
         except ValueError as error:
@@ -406,6 +353,6 @@ def interactive(engine):
 
 
 if __name__ == "__main__":
-    engine = PratyaharaEngine(SEQUENCE, convention="ashtadhyayi")
+    engine = PratyaharaEngine(SEQUENCE, convention="rule_based")
     demo(engine)
     interactive(engine)
